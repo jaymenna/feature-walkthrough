@@ -12,13 +12,13 @@
 
 This is the skill's synthesis of the cited practitioner guidance, not a universal formula. Recommend and fill in this outline before producing scenes. For a short pitch, combine situation/problem and payoff/CTA. For a technical audience, allow more proof. The story provides context for the problem; it must not delay a clear problem statement behind a long personal anecdote or company history.
 
-Pair the outline with a small goals card: **audience; primary problem; desired belief or understanding; proof; desired action; runtime/format; claim boundaries.** Iterate both with the user. Their feedback may change the angle or goal even when the product requirements remain unchanged. Record the agreed version, then build from it.
+Pair the outline with a small goals card: **audience; primary problem; desired belief or understanding; proof; desired action; runtime/format; voice and listening plan for narrated work; claim boundaries.** Iterate both with the user. Their feedback may change the angle or goal even when the product requirements remain unchanged. Record the agreed version, then build from it.
 
 ## A compact working brief
 
 Save the pitch lane's brief as **pitch-demo-brief.md** and record Gate 1 as draft or approved, with the approval source/date when available. Keep feature-demo-brief.md and feature-demo production/review artifacts in their own lane. Approval and revision state belong to the specific lane and artifact; a brief approval is not final-media approval. Preserve existing directory choices and use distinct filenames when both lanes share a directory.
 
-Capture audience, decision, situation, current workaround, consequence, desired outcome, differentiated mechanism, available evidence, scope limits, format/time budget, and next step. One paragraph can be enough. Known context need not be reconfirmed.
+Capture audience, decision, situation, current workaround, consequence, desired outcome, differentiated mechanism, available evidence, scope limits, format/time budget, narration plan when applicable, and next step. One paragraph can be enough. Known context need not be reconfirmed.
 
 Develop this with the user. Start with their business problem, recommend a short opening and proof sequence, and invite correction. Record the brief as draft until the user agrees with the story. Agreement on product requirements does not settle a pitch: a detailed audit requirement may be important implementation evidence while repeated back-and-forth over incomplete requests is the reason the buyer cares. Do not build a detailed storyboard or produce media first and use its polish to steer the user toward an unagreed angle.
 

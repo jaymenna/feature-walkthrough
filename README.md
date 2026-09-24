@@ -101,6 +101,9 @@ skill includes [story guidance](demo-pitch/references/story-and-production.md),
 Its optional JSON renderer makes an offline **planning storyboard**, not a product
 demo or video. Voice generation and recording use the tools available in the
 working project; no TTS service, video exporter or provider account is bundled.
+For finished pitch production, the companion plans narration in the first version,
+samples the selected voice before full generation, and keeps measured audio,
+captions and scene timing synchronized. It reports listening limits explicitly.
 
 ### Install the companion or both skills
 

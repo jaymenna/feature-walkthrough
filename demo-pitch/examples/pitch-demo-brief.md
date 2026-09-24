@@ -11,6 +11,7 @@
 - **Proof to show:** a requester sees a missing delivery date, fixes it and submits; the coordinator receives the same complete request with review still pending.
 - **Next step:** agree one request type to test using sample data. This is proposed text, not a booking button or a claim that a pilot service exists.
 - **Format:** a proposed two-minute concept demo, web workflow first. Actual duration must be measured after narration and visual holds.
+- **Audio plan:** narration and captions in the first produced demo. Select a suitable available voice with a short sample from the agreed script before generating the full track. Record actual provider/voice/settings and listening results then; none are selected or auditioned in this planning example. If listening is unavailable, label that review pending and provide playable audio without claiming audible quality was verified.
 - **Claim limits:** all product behavior is planned. No implemented backend, supplier integration, automated approval, cost savings or processing-time result is claimed.
 
 ## Proposed outline

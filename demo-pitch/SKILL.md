@@ -17,6 +17,8 @@ Treat brief agreement as **Gate 1**. Record its status and the user's explicit a
 
 Use the conversation and supplied artifacts first. Identify whose product this is, the audience and their decision, concrete problem and current workaround, desired outcome, available product evidence, delivery format, approximate time budget, and next step. Record consequential assumptions. Present an unverified buyer problem as a hypothesis to test, not an observed fact; do not invent its frequency or duration to strengthen the opening. Requirements establish capabilities and constraints; they do not establish which problem should lead the pitch. Do not require a codebase when a working product, screenshots, or an adequately described concept is available.
 
+For a finished demo pitch, plan narration with captions by default; honor an explicit silent, live-presenter, planning-only, or script-only request. Read [narration](references/narration.md) during briefing and check the available voice path before promising a finished narrated artifact. Professional audio belongs in the first delivered version, not a later enhancement. Include the voice choice, sample/listening plan, and any real capability limit in the brief.
+
 Read available UI, theme, terminology, and relevant implementation before depicting them. Maintain a small claim ledger: claim, source, evidence type (observed / simulated / planned / measured), data provenance, limitation. A passing UI test proves UI behavior, not a functioning backend or customer outcome. An export action alone does not prove a particular field or audit entry exists in its output; inspect it. Use fictional data without implying customer endorsement. Keep source systems read-only unless changes are already authorized.
 
 ## Choose the story before building scenes
@@ -45,7 +47,7 @@ For multiple roles, identify the primary and secondary customers and the value e
 
 ## Produce the requested artifact
 
-Read [narration](references/narration.md) when speech or video is involved. Use [research](references/research.md) for rationale or alternative structures; it distinguishes expert advice from our production heuristics.
+For narrated work, select and assess a short voice sample after story agreement and before generating the full track or locking visual timings; follow [narration](references/narration.md). This is a production quality check, not an extra user-approval gate. Use [research](references/research.md) for rationale or alternative structures; it distinguishes expert advice from our production heuristics.
 
 Create a compact brief, a storyboard with claim sources, and the requested demo. If the user requests only a skill, strategy, or script, do not expand that into an unsolicited full video. For an actual demo request, a script alone is not completion: build a working self-playing HTML demo or record the relevant product path, and export video when requested and the tools are available. Use existing app components or construct a faithful standalone representation; do not change the target app merely to film it.
 
@@ -59,4 +61,4 @@ The [fictional SupplyLane brief](examples/pitch-demo-brief.md) illustrates the s
 
 Use [review criteria](references/review.md). Obtain an independent critique when requested or required by the workspace; provide the brief and evidence, not instructions to agree. Resolve load-bearing findings yourself. Test the chosen story against a skeptical viewer: can they state the problem, the visible difference, why to believe it, and the next step?
 
-Verify whatever you actually produced: visual readability, state continuity, accurate role/version labels, play/pause/replay and scene jumps for HTML; full playback, audio/visual sync, pronunciation, caption accuracy and audible delivery for video. Review once muted and once audio-only where applicable. Report what was tested and what remains unverified. Link the final artifacts and disclose implementation or production limitations succinctly.
+Verify whatever you actually produced: visual readability, state continuity, accurate role/version labels, play/pause/replay and scene jumps for HTML. For every narrated format, including HTML, check full playback, audio/visual sync, pronunciation, caption accuracy and audible delivery. Review once muted and once audio-only where listening is available. Follow the narration guide's explicit fallback when it is not; successful decoding and an unmuted player do not prove professional delivery. Report what was tested and what remains unverified. Link the final artifacts and disclose implementation or production limitations succinctly.
