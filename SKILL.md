@@ -156,6 +156,14 @@ you" and then filters the list is what sells it.
 **Do not build the feature.** This is a drawing of a feature, not an implementation.
 Never modify the codebase you were pointed at. Read from it only.
 
+**It has to work on a phone.** Reviewers open the link on their phone, often
+sideways. Keep the mockup markup inside `<div id="stage">` and size it with
+`var(--sw)` / `var(--sh)`, never `100vw` / `100vh`. The engine draws the stage at
+desktop size (`STAGE_MIN_W` x `STAGE_MIN_H`) and scales it down to fit, so nothing
+runs off the side. If you paste in CSS captured from the real app, rewrite its
+viewport units the same way and neutralise its width media queries, or the app
+falls into its own mobile layout inside the scaled stage.
+
 **One file, no dependencies.** No CDN links, no fonts fetched over the network, no
 frameworks. It has to work on a laptop with no internet, opened from a file path,
 possibly years from now.

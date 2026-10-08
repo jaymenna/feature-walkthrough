@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=1440, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>PRODUCT — FEATURE</title>
 
 <!--
@@ -66,9 +66,13 @@ html, body {
    The fake screen. Match the real product's component shapes: how its tables,
    pills, sidebars, modals and buttons actually look.
 
+   Size the screen with var(--sw) and var(--sh), never 100vw / 100vh. The
+   engine draws the mockup on a desktop-sized stage and scales it to fit a
+   phone or tablet; viewport units would measure the phone instead.
+
    The placeholder below exists only so the template runs. Delete it.
    ══════════════════════════════════════════════════════════════════════════ */
-.placeholder-app { display: flex; height: 100vh; }
+.placeholder-app { display: flex; height: var(--sh); }
 .placeholder-nav { width: 240px; background: #f8f9fa; border-right: 1px solid var(--line); padding: 20px; }
 .placeholder-nav h2 { font-size: 15px; margin: 0 0 18px; }
 .placeholder-nav div { padding: 8px 10px; border-radius: var(--radius); color: var(--ink-2); font-size: 13px; }
@@ -201,6 +205,14 @@ html, body {
              font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 0 24px; cursor: pointer; }
 #heroStart:hover { background: var(--primary-dark); }
 
+/* ─── Stage: the mockup at desktop size, scaled to fit any screen ───
+   fitStage() sets --sw / --sh and the scale. Until it runs, the stage is
+   simply the window. */
+:root { --sw: 100vw; --sh: 100vh; }
+#stage { position: fixed; top: 0; left: 0; width: var(--sw); height: var(--sh);
+         transform-origin: 0 0; overflow: hidden; }
+body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+
 /* ─── Review panel ─── */
 .ap-overlay { position: fixed; inset: 0; z-index: 1400; background: rgba(20,22,24,.55);
               display: none; align-items: center; justify-content: center; padding: 24px; }
@@ -260,14 +272,45 @@ html, body {
               display: flex; align-items: center; gap: 7px; transition: all .15s ease; }
 .review-btn:hover { background: #fff; color: var(--ink); border-color: rgba(16,24,40,.26); }
 .review-btn .g { width: 6px; height: 6px; border-radius: 50%; background: #2f9e44; }
+
+/* ─── Phones and small tablets ───
+   The mockup shrinks with the stage; the chrome around it stays readable and
+   tappable. A phone held sideways is the target; upright still works. */
+@media (max-height: 520px), (max-width: 760px) {
+  .narration { top: 8px; padding: 8px 12px; font-size: 12.5px; line-height: 1.35;
+               border-radius: 10px; max-width: calc(100vw - 24px); }
+  .narration.low { bottom: calc(var(--barH, 40px) + 14px); }
+  .narration .step-n { margin-right: 7px; }
+  .tour-bar { bottom: max(6px, env(safe-area-inset-bottom)); padding: 4px 6px 4px 10px; gap: 4px;
+              border-radius: 11px; max-width: calc(100vw - 16px); }
+  .tour-bar .dots { margin-right: 4px; }
+  .tour-bar .step-label { margin-right: 4px; }
+  .tour-bar button { padding: 7px 10px; font-size: 11px; }
+  .tour-bar button.tnav { padding: 7px 9px; }
+  #hero { padding: 10px; }
+  .hero-card { padding: 20px 22px 16px; max-height: calc(100% - 4px); overflow-y: auto; }
+  .hero-brand { margin-bottom: 12px; }
+  .hero-card h1 { font-size: 20px; margin-bottom: 6px; }
+  .hero-card .lede { font-size: 13.5px; margin-bottom: 12px; }
+  .hero-list { margin-bottom: 14px; }
+  .hero-item { padding: 8px 0; }
+  .hero-foot { position: sticky; bottom: -16px; background: #fff; padding: 10px 0 16px; margin-bottom: -16px; }
+  #heroStart { height: 40px; }
+  .ap-overlay { padding: 10px; }
+  .ap-card { padding: 18px 18px 16px; max-height: calc(100% - 4px); }
+  .choices { grid-template-columns: 1fr; }
+  .review-btn { top: 8px; right: 10px; }
+}
 </style>
 </head>
 <body>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      4. MOCKUP MARKUP — YOURS
-     The fake screen. Replace the placeholder below entirely.
+     The fake screen. Replace the placeholder below entirely, but keep it
+     inside <div id="stage">: the stage is what scales to fit a phone.
      ══════════════════════════════════════════════════════════════════════════ -->
+<div id="stage">
 <div class="placeholder-app">
   <div class="placeholder-nav" id="phNav">
     <h2>Placeholder</h2>
@@ -286,6 +329,7 @@ html, body {
 </div>
 <div id="phPanel"><h3>Placeholder panel</h3>
   <p style="margin:0;font-size:12px;color:var(--dimmed)">A panel the tour can open and spotlight.</p></div>
+</div><!-- /stage -->
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      5. INTRO CARD — YOURS (the words), ENGINE (the structure)
@@ -415,6 +459,13 @@ const FEATURE  = 'Feature';           // the feature being proposed
 const FEEDBACK_EMAIL = '';   // your address — enables the "Email it" button
 const WEBHOOK_URL    = '';   // optional: your own Slack or Discord incoming webhook
 const WEBHOOK_STYLE  = 'slack';   // 'slack' or 'discord'
+
+/* The smallest screen the mockup is drawn for. On anything smaller (a phone,
+   a small tablet) the whole mockup is drawn at this size and scaled down to
+   fit, so nothing runs off the side. Match the width the real product was
+   designed at. */
+const STAGE_MIN_W = 1440;
+const STAGE_MIN_H = 760;
 
 /* ══════════════════════════════════════════════════════════════════════════
    7. MOCKUP STATE AND RENDERING — YOURS
@@ -760,7 +811,23 @@ $('tourReplay').addEventListener('click',()=>{ resetMockup(); playFrom(0, true);
 const toFeedback = ()=>{ stopTour(); hideNarration(); spotOff(); openApproval(); };
 $('tourFeedback').addEventListener('click', toFeedback);
 $('reviewBtn').addEventListener('click', toFeedback);
-window.addEventListener('resize', applySpot);
+/* ─── Stage fit ───
+   Below STAGE_MIN_W x STAGE_MIN_H the stage keeps a desktop size and is
+   scaled down; above it the stage is just the window. The spotlight reads
+   on-screen rectangles, so it follows the scaled mockup with no changes. */
+function fitStage(){
+  const vv = window.visualViewport;
+  const W = vv ? vv.width : window.innerWidth, H = vv ? vv.height : window.innerHeight;
+  const s = Math.min(1, W / STAGE_MIN_W, H / STAGE_MIN_H);
+  const r = document.documentElement.style;
+  r.setProperty('--sw', (W / s) + 'px'); r.setProperty('--sh', (H / s) + 'px');
+  $('stage').style.transform = s < 1 ? `scale(${s})` : '';
+  r.setProperty('--barH', $('tourBar').offsetHeight + 'px');
+}
+const refit = ()=>{ fitStage(); applySpot(); };
+window.addEventListener('resize', refit);
+window.addEventListener('orientationchange', ()=>setTimeout(refit, 250));
+if(window.visualViewport) window.visualViewport.addEventListener('resize', refit);
 
 /* ─── Review panel ─── */
 let decision=null;
@@ -882,7 +949,7 @@ async function showHero(){
 $('apSubtitle').textContent = `${PRODUCT} — ${FEATURE}. Your answer goes back to the team that built this.`;
 $('heroEyebrow').textContent = `${PRODUCT} · ${FEATURE}`;
 $('apEmail').style.display = FEEDBACK_EMAIL ? '' : 'none';
-resetMockup(); updateTourUI();
+fitStage(); resetMockup(); updateTourUI();
 /* A logo with no src renders as a broken-image icon, which on a page that
    promises to fetch nothing is the worst possible first impression. If there
    is nothing to show, show nothing. */
