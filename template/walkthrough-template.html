@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=1440, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>PRODUCT — FEATURE</title>
 
 <!--
@@ -66,9 +66,13 @@ html, body {
    The fake screen. Match the real product's component shapes: how its tables,
    pills, sidebars, modals and buttons actually look.
 
+   Size the screen with var(--sw) and var(--sh), never 100vw / 100vh. The
+   engine draws the mockup on a desktop-sized stage and scales it to fit a
+   phone or tablet; viewport units would measure the phone instead.
+
    The placeholder below exists only so the template runs. Delete it.
    ══════════════════════════════════════════════════════════════════════════ */
-.placeholder-app { display: flex; height: 100vh; }
+.placeholder-app { display: flex; height: var(--sh); }
 .placeholder-nav { width: 240px; background: #f8f9fa; border-right: 1px solid var(--line); padding: 20px; }
 .placeholder-nav h2 { font-size: 15px; margin: 0 0 18px; }
 .placeholder-nav div { padding: 8px 10px; border-radius: var(--radius); color: var(--ink-2); font-size: 13px; }
@@ -201,6 +205,14 @@ html, body {
              font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 0 24px; cursor: pointer; }
 #heroStart:hover { background: var(--primary-dark); }
 
+/* ─── Stage: the mockup at desktop size, scaled to fit any screen ───
+   fitStage() sets --sw / --sh and the scale. Until it runs, the stage is
+   simply the window. */
+:root { --sw: 100vw; --sh: 100vh; }
+#stage { position: fixed; top: 0; left: 0; width: var(--sw); height: var(--sh);
+         transform-origin: 0 0; overflow: hidden; }
+body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+
 /* ─── Review panel ─── */
 .ap-overlay { position: fixed; inset: 0; z-index: 1400; background: rgba(20,22,24,.55);
               display: none; align-items: center; justify-content: center; padding: 24px; }
@@ -260,14 +272,45 @@ html, body {
               display: flex; align-items: center; gap: 7px; transition: all .15s ease; }
 .review-btn:hover { background: #fff; color: var(--ink); border-color: rgba(16,24,40,.26); }
 .review-btn .g { width: 6px; height: 6px; border-radius: 50%; background: #2f9e44; }
+
+/* ─── Phones and small tablets ───
+   The mockup shrinks with the stage; the chrome around it stays readable and
+   tappable. A phone held sideways is the target; upright still works. */
+@media (max-height: 520px), (max-width: 760px) {
+  .narration { top: 8px; padding: 8px 12px; font-size: 12.5px; line-height: 1.35;
+               border-radius: 10px; max-width: calc(100vw - 24px); }
+  .narration.low { bottom: calc(var(--barH, 40px) + 14px); }
+  .narration .step-n { margin-right: 7px; }
+  .tour-bar { bottom: max(6px, env(safe-area-inset-bottom)); padding: 4px 6px 4px 10px; gap: 4px;
+              border-radius: 11px; max-width: calc(100vw - 16px); }
+  .tour-bar .dots { margin-right: 4px; }
+  .tour-bar .step-label { margin-right: 4px; }
+  .tour-bar button { padding: 7px 10px; font-size: 11px; }
+  .tour-bar button.tnav { padding: 7px 9px; }
+  #hero { padding: 10px; }
+  .hero-card { padding: 20px 22px 16px; max-height: calc(100% - 4px); overflow-y: auto; }
+  .hero-brand { margin-bottom: 12px; }
+  .hero-card h1 { font-size: 20px; margin-bottom: 6px; }
+  .hero-card .lede { font-size: 13.5px; margin-bottom: 12px; }
+  .hero-list { margin-bottom: 14px; }
+  .hero-item { padding: 8px 0; }
+  .hero-foot { position: sticky; bottom: -16px; background: #fff; padding: 10px 0 16px; margin-bottom: -16px; }
+  #heroStart { height: 40px; }
+  .ap-overlay { padding: 10px; }
+  .ap-card { padding: 18px 18px 16px; max-height: calc(100% - 4px); }
+  .choices { grid-template-columns: 1fr; }
+  .review-btn { top: 8px; right: 10px; }
+}
 </style>
 </head>
 <body>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      4. MOCKUP MARKUP — YOURS
-     The fake screen. Replace the placeholder below entirely.
+     The fake screen. Replace the placeholder below entirely, but keep it
+     inside <div id="stage">: the stage is what scales to fit a phone.
      ══════════════════════════════════════════════════════════════════════════ -->
+<div id="stage">
 <div class="placeholder-app">
   <div class="placeholder-nav" id="phNav">
     <h2>Placeholder</h2>
@@ -286,6 +329,7 @@ html, body {
 </div>
 <div id="phPanel"><h3>Placeholder panel</h3>
   <p style="margin:0;font-size:12px;color:var(--dimmed)">A panel the tour can open and spotlight.</p></div>
+</div><!-- /stage -->
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      5. INTRO CARD — YOURS (the words), ENGINE (the structure)
@@ -416,6 +460,20 @@ const FEEDBACK_EMAIL = '';   // your address — enables the "Email it" button
 const WEBHOOK_URL    = '';   // optional: your own Slack or Discord incoming webhook
 const WEBHOOK_STYLE  = 'slack';   // 'slack' or 'discord'
 
+/* The smallest screen the mockup is drawn for. On anything smaller (a phone,
+   a small tablet) the whole mockup is drawn at this size and scaled down to
+   fit, so nothing runs off the side. Match the width the real product was
+   designed at. */
+const STAGE_MIN_W = 1440;
+const STAGE_MIN_H = 760;
+
+/* Optional recorded narration: one audio clip per TOUR step, in the same order,
+   each embedded as a data: URI (data:audio/mpeg;base64,...) because the page
+   fetches nothing. Leave it empty and the browser's own voice reads the
+   captions instead. With clips, the next step's clip is loaded into a second
+   player while the current one plays, so the voice never waits between steps. */
+const NARRATION_CLIPS = [];
+
 /* ══════════════════════════════════════════════════════════════════════════
    7. MOCKUP STATE AND RENDERING — YOURS
    ──────────────────────────────────────────────────────────────────────────
@@ -492,7 +550,19 @@ const TOUR = [
    9. ENGINE — DO NOT EDIT BELOW THIS LINE
    ══════════════════════════════════════════════════════════════════════════ */
 const $ = (id) => document.getElementById(id);
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const rawSleep = ms => new Promise(r=>setTimeout(r,ms));
+/* Steps pace themselves with sleep(), so sleep holds still while the tour is
+   paused -- by the Pause button or because the page went out of view -- and the
+   picture can never run ahead of, or fall behind, the voice. Engine code that
+   must keep ticking while paused uses rawSleep. */
+async function sleep(ms){
+  let left = ms;
+  while(left > 0){
+    if(tourPaused){ await rawSleep(100); continue; }
+    const step = Math.min(left, 100);
+    await rawSleep(step); left -= step;
+  }
+}
 
 /* Mac says option, Windows and Linux say alt — the page speaks whichever one
    the reviewer is actually on. Use ${MODKEY} in narration text. */
@@ -580,8 +650,10 @@ function placeNarration(target){
 const SPEEDS = [1, 1.5, 2, 0.75];
 let speedIx = 0, voiceOn = false, muted = false, volume = .6;
 const speed = () => SPEEDS[speedIx];
-const CAN_SPEAK = typeof window !== 'undefined' && 'speechSynthesis' in window
-                  && typeof SpeechSynthesisUtterance === 'function';
+const CLIP_MODE = Array.isArray(NARRATION_CLIPS) && NARRATION_CLIPS.length > 0
+                  && typeof Audio === 'function';
+const CAN_SPEAK = CLIP_MODE || (typeof window !== 'undefined' && 'speechSynthesis' in window
+                  && typeof SpeechSynthesisUtterance === 'function');
 const audible = () => voiceOn && !muted && volume > 0 && CAN_SPEAK;
 
 /* Chrome fills the voice list asynchronously, so ask now and again on the
@@ -604,7 +676,42 @@ function pickVoice(){
   voiceCache = better || en.find(v => v.localService) || en[0];
   return voiceCache;
 }
-if(CAN_SPEAK){
+/* Recorded narration: two players. One plays the current step; the other is
+   loaded with the next step's clip so the change of step has no gap. */
+const clipPlayers = CLIP_MODE ? [new Audio(), new Audio()] : [];
+clipPlayers.forEach(a => { a.preload = 'auto'; });
+let clipCur = 0;
+const clipIndex = text => TOUR.findIndex(t => t.text === text);
+function preloadClip(k){
+  if(!CLIP_MODE) return;
+  const src = NARRATION_CLIPS[k], next = clipPlayers[1 - clipCur];
+  if(src && next.src !== src){ next.src = src; try{ next.load(); }catch(e){} }
+}
+/* iOS lets a media element play only after it has been started inside a tap,
+   so every tap that turns the voice on blesses both players at once. */
+function unlockClips(){
+  clipPlayers.forEach((a, i) => {
+    try{
+      if(!a.src) a.src = NARRATION_CLIPS[Math.min(i, NARRATION_CLIPS.length - 1)];
+      a.muted = true; const p = a.play(); if(p && p.catch) p.catch(()=>{});
+      a.pause(); a.muted = false;
+    }catch(e){}
+  });
+}
+function pauseVoice(){
+  if(CLIP_MODE){ try{ clipPlayers[clipCur].pause(); }catch(e){} return; }
+  if(CAN_SPEAK){ try{ speechSynthesis.pause(); }catch(e){} }
+}
+function resumeVoice(){
+  if(CLIP_MODE){
+    const a = clipPlayers[clipCur];
+    if(audible() && a.src && !a.ended && a.currentTime > 0){ try{ a.play().catch(()=>{}); }catch(e){} }
+    return;
+  }
+  if(CAN_SPEAK){ try{ speechSynthesis.resume(); }catch(e){} }
+}
+
+if(CAN_SPEAK && !CLIP_MODE){
   try{
     speechSynthesis.getVoices();
     speechSynthesis.addEventListener('voiceschanged', ()=>{ voiceCache = null; pickVoice(); });
@@ -612,13 +719,53 @@ if(CAN_SPEAK){
   window.addEventListener('beforeunload', ()=>{ try{ speechSynthesis.cancel(); }catch(e){} });
 }
 
-function stopSpeech(){ if(CAN_SPEAK){ try{ speechSynthesis.cancel(); }catch(e){} } }
+function stopSpeech(){
+  if(CLIP_MODE){ clipPlayers.forEach(a => { try{ a.pause(); }catch(e){} }); return; }
+  if(CAN_SPEAK){ try{ speechSynthesis.cancel(); }catch(e){} }
+}
+
+/* One recorded clip per step. Resolves when the clip ends. A clip already
+   playing (started inside the tap that turned the voice on) is followed, not
+   restarted. The worst-case release counts only unpaused time, so a long pause
+   never skips a step. */
+function speakClip(text){
+  const k = clipIndex(text), src = NARRATION_CLIPS[k];
+  if(!src) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let player = clipPlayers[clipCur];
+    const following = player.src === src && !player.paused && !player.ended;
+    if(!following){
+      stopSpeech();
+      const other = clipPlayers[1 - clipCur];
+      if(other.src === src){ clipCur = 1 - clipCur; player = other; }
+      else { player.src = src; }
+      try{ player.currentTime = 0; }catch(e){}
+    }
+    let settled = false, waited = 0, tick = null;
+    const finish = ok => {
+      if(settled) return; settled = true; clearInterval(tick);
+      player.onended = null; player.onerror = null; resolve(ok);
+    };
+    player.playbackRate = speed();
+    player.volume = volume;
+    player.onended = () => finish(true);
+    player.onerror = () => finish(false);
+    if(!following){ const p = player.play(); if(p && p.catch) p.catch(() => finish(false)); }
+    preloadClip(k + 1);
+    tick = setInterval(() => {
+      if(!tourPaused) waited += 500;
+      const limit = isFinite(player.duration) ? (player.duration * 1000) / speed() + 4000 : 120000;
+      if(waited > limit) finish(false);
+    }, 500);
+  });
+}
 
 /* Resolves when the sentence has been read, so the tour waits for the voice
    instead of guessing at it. Resolves at once when there is nothing to hear,
    and can never hang: a worst-case timer always releases it. */
 function speak(text){
   if(!audible() || !text) return Promise.resolve(false);
+  if(CLIP_MODE) return speakClip(text);
   return new Promise(resolve => {
     let settled = false;
     const finish = ok => { if(settled) return; settled = true; resolve(ok); };
@@ -642,8 +789,8 @@ async function hold(ms, token){
   let waited=0;
   while(waited<ms){
     if(token!==undefined && token!==tourToken) throw new Error('superseded');
-    while(tourPaused && (token===undefined || token===tourToken)) await sleep(110);
-    await sleep(80); waited+=80;
+    while(tourPaused && (token===undefined || token===tourToken)) await rawSleep(110);
+    await rawSleep(80); waited+=80;
   }
   if(token!==undefined && token!==tourToken) throw new Error('superseded');
 }
@@ -713,7 +860,8 @@ $('tourDots').addEventListener('click', e=>{
 $('tourToggle').addEventListener('click',()=>{
   if(tourAuto){
     tourPaused = !tourPaused;
-    if(CAN_SPEAK){ try{ tourPaused ? speechSynthesis.pause() : speechSynthesis.resume(); }catch(e){} }
+    hiddenPause = false;
+    tourPaused ? pauseVoice() : resumeVoice();
     updateTourUI();
   }
   else { playFrom(Math.min(currentStep+1, TOUR.length-1), true); }   // resume auto from here
@@ -734,6 +882,7 @@ $('tourVoice').addEventListener('click',()=>{
   if(voiceOn && muted) muted = false;
   updateTourUI();
   if(!voiceOn){ stopSpeech(); return; }
+  if(CLIP_MODE) unlockClips();
   const line = TOUR[currentStep] ? TOUR[currentStep].text : 'Voice on.';
   speak(line);
 });
@@ -750,6 +899,7 @@ $('tourMute').addEventListener('click',()=>{
 $('tourVol').addEventListener('input', e=>{
   volume = Math.max(0, Math.min(1, Number(e.target.value) / 100));
   if(volume > 0 && muted) muted = false;
+  clipPlayers.forEach(a => { a.volume = volume; });
   if(volume === 0) stopSpeech();
   updateTourUI();
 });
@@ -757,10 +907,38 @@ $('tourVol').addEventListener('change', ()=>{
   if(audible() && TOUR[currentStep]) speak(TOUR[currentStep].text);
 });
 $('tourReplay').addEventListener('click',()=>{ resetMockup(); playFrom(0, true); });
+/* A page out of view (another tab, another app, a locked phone) has its timers
+   slowed or stopped by the browser while recorded audio may keep going, which
+   is how the voice and the picture drift apart. So the tour pauses itself when
+   the page is hidden and carries on from the same spot when it comes back. */
+let hiddenPause = false;
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    if(tourAuto && !tourPaused){ hiddenPause = true; tourPaused = true; pauseVoice(); updateTourUI(); }
+  } else if(hiddenPause){
+    hiddenPause = false; tourPaused = false; resumeVoice(); updateTourUI();
+  }
+});
 const toFeedback = ()=>{ stopTour(); hideNarration(); spotOff(); openApproval(); };
 $('tourFeedback').addEventListener('click', toFeedback);
 $('reviewBtn').addEventListener('click', toFeedback);
-window.addEventListener('resize', applySpot);
+/* ─── Stage fit ───
+   Below STAGE_MIN_W x STAGE_MIN_H the stage keeps a desktop size and is
+   scaled down; above it the stage is just the window. The spotlight reads
+   on-screen rectangles, so it follows the scaled mockup with no changes. */
+function fitStage(){
+  const vv = window.visualViewport;
+  const W = vv ? vv.width : window.innerWidth, H = vv ? vv.height : window.innerHeight;
+  const s = Math.min(1, W / STAGE_MIN_W, H / STAGE_MIN_H);
+  const r = document.documentElement.style;
+  r.setProperty('--sw', (W / s) + 'px'); r.setProperty('--sh', (H / s) + 'px');
+  $('stage').style.transform = s < 1 ? `scale(${s})` : '';
+  r.setProperty('--barH', $('tourBar').offsetHeight + 'px');
+}
+const refit = ()=>{ fitStage(); applySpot(); };
+window.addEventListener('resize', refit);
+window.addEventListener('orientationchange', ()=>setTimeout(refit, 250));
+if(window.visualViewport) window.visualViewport.addEventListener('resize', refit);
 
 /* ─── Review panel ─── */
 let decision=null;
@@ -870,7 +1048,7 @@ async function showHero(){
   await new Promise(res=>{
     let done=false;
     const go=()=>{ if(done) return; done=true; clearInterval(tick); updateTourUI(); res(); };
-    $('heroStart').addEventListener('click', go, { once:true });
+    $('heroStart').addEventListener('click', () => { if(CLIP_MODE) unlockClips(); go(); }, { once:true });
     h.addEventListener('click', e=>{ if(e.target===h) go(); });
     setTimeout(go, 7400);
   });
@@ -882,7 +1060,7 @@ async function showHero(){
 $('apSubtitle').textContent = `${PRODUCT} — ${FEATURE}. Your answer goes back to the team that built this.`;
 $('heroEyebrow').textContent = `${PRODUCT} · ${FEATURE}`;
 $('apEmail').style.display = FEEDBACK_EMAIL ? '' : 'none';
-resetMockup(); updateTourUI();
+fitStage(); resetMockup(); updateTourUI();
 /* A logo with no src renders as a broken-image icon, which on a page that
    promises to fetch nothing is the worst possible first impression. If there
    is nothing to show, show nothing. */

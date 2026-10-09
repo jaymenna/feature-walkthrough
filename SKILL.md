@@ -50,6 +50,23 @@ next sentence so the current one is not cut off. When the voice is on, each step
 waits for its sentence to finish rather than guessing at a duration, so the narration
 and the pacing cannot drift apart.
 
+**Recorded narration (optional).** To use a real recorded voice instead of the
+browser's built-in one, put one audio clip per tour step into `NARRATION_CLIPS`
+in the CONFIG section. Use the same order as `TOUR`, and embed each clip as a
+`data:audio/mpeg;base64,...` URI so the page still fetches nothing. The engine plays
+the clips through two players: while one step's clip plays, the next step's clip is
+loaded into the other player, so there is no gap when the step changes. Every tap
+that turns the voice on (Show me, Voice) unlocks both players, which iOS requires.
+Leave `NARRATION_CLIPS` empty to keep the built-in voice.
+
+**The tour pauses itself when the page is out of view.** Browsers slow or stop a
+hidden page's timers (another tab, another app, a locked phone), while recorded
+audio can keep going, so the voice and the picture used to drift apart. Now the tour
+pauses when the page is hidden and carries on from the same spot when it comes back.
+`sleep()` inside a step also holds still while the tour is paused, so Pause freezes
+the moving picture as well as the voice. Engine code that must keep ticking while
+paused uses `rawSleep()`.
+
 **Because a viewer can jump to any step, every step must set up its own screen.**
 Never write a step whose `run` depends on the step before it having run: put the
 scene, the filters and the open panels that step needs inside that step.
@@ -155,6 +172,14 @@ you" and then filters the list is what sells it.
 
 **Do not build the feature.** This is a drawing of a feature, not an implementation.
 Never modify the codebase you were pointed at. Read from it only.
+
+**It has to work on a phone.** Reviewers open the link on their phone, often
+sideways. Keep the mockup markup inside `<div id="stage">` and size it with
+`var(--sw)` / `var(--sh)`, never `100vw` / `100vh`. The engine draws the stage at
+desktop size (`STAGE_MIN_W` x `STAGE_MIN_H`) and scales it down to fit, so nothing
+runs off the side. If you paste in CSS captured from the real app, rewrite its
+viewport units the same way and neutralise its width media queries, or the app
+falls into its own mobile layout inside the scaled stage.
 
 **One file, no dependencies.** No CDN links, no fonts fetched over the network, no
 frameworks. It has to work on a laptop with no internet, opened from a file path,
