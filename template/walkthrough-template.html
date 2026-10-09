@@ -467,6 +467,13 @@ const WEBHOOK_STYLE  = 'slack';   // 'slack' or 'discord'
 const STAGE_MIN_W = 1440;
 const STAGE_MIN_H = 760;
 
+/* Optional recorded narration: one audio clip per TOUR step, in the same order,
+   each embedded as a data: URI (data:audio/mpeg;base64,...) because the page
+   fetches nothing. Leave it empty and the browser's own voice reads the
+   captions instead. With clips, the next step's clip is loaded into a second
+   player while the current one plays, so the voice never waits between steps. */
+const NARRATION_CLIPS = [];
+
 /* ══════════════════════════════════════════════════════════════════════════
    7. MOCKUP STATE AND RENDERING — YOURS
    ──────────────────────────────────────────────────────────────────────────
@@ -543,7 +550,19 @@ const TOUR = [
    9. ENGINE — DO NOT EDIT BELOW THIS LINE
    ══════════════════════════════════════════════════════════════════════════ */
 const $ = (id) => document.getElementById(id);
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const rawSleep = ms => new Promise(r=>setTimeout(r,ms));
+/* Steps pace themselves with sleep(), so sleep holds still while the tour is
+   paused -- by the Pause button or because the page went out of view -- and the
+   picture can never run ahead of, or fall behind, the voice. Engine code that
+   must keep ticking while paused uses rawSleep. */
+async function sleep(ms){
+  let left = ms;
+  while(left > 0){
+    if(tourPaused){ await rawSleep(100); continue; }
+    const step = Math.min(left, 100);
+    await rawSleep(step); left -= step;
+  }
+}
 
 /* Mac says option, Windows and Linux say alt — the page speaks whichever one
    the reviewer is actually on. Use ${MODKEY} in narration text. */
@@ -631,8 +650,10 @@ function placeNarration(target){
 const SPEEDS = [1, 1.5, 2, 0.75];
 let speedIx = 0, voiceOn = false, muted = false, volume = .6;
 const speed = () => SPEEDS[speedIx];
-const CAN_SPEAK = typeof window !== 'undefined' && 'speechSynthesis' in window
-                  && typeof SpeechSynthesisUtterance === 'function';
+const CLIP_MODE = Array.isArray(NARRATION_CLIPS) && NARRATION_CLIPS.length > 0
+                  && typeof Audio === 'function';
+const CAN_SPEAK = CLIP_MODE || (typeof window !== 'undefined' && 'speechSynthesis' in window
+                  && typeof SpeechSynthesisUtterance === 'function');
 const audible = () => voiceOn && !muted && volume > 0 && CAN_SPEAK;
 
 /* Chrome fills the voice list asynchronously, so ask now and again on the
@@ -655,7 +676,42 @@ function pickVoice(){
   voiceCache = better || en.find(v => v.localService) || en[0];
   return voiceCache;
 }
-if(CAN_SPEAK){
+/* Recorded narration: two players. One plays the current step; the other is
+   loaded with the next step's clip so the change of step has no gap. */
+const clipPlayers = CLIP_MODE ? [new Audio(), new Audio()] : [];
+clipPlayers.forEach(a => { a.preload = 'auto'; });
+let clipCur = 0;
+const clipIndex = text => TOUR.findIndex(t => t.text === text);
+function preloadClip(k){
+  if(!CLIP_MODE) return;
+  const src = NARRATION_CLIPS[k], next = clipPlayers[1 - clipCur];
+  if(src && next.src !== src){ next.src = src; try{ next.load(); }catch(e){} }
+}
+/* iOS lets a media element play only after it has been started inside a tap,
+   so every tap that turns the voice on blesses both players at once. */
+function unlockClips(){
+  clipPlayers.forEach((a, i) => {
+    try{
+      if(!a.src) a.src = NARRATION_CLIPS[Math.min(i, NARRATION_CLIPS.length - 1)];
+      a.muted = true; const p = a.play(); if(p && p.catch) p.catch(()=>{});
+      a.pause(); a.muted = false;
+    }catch(e){}
+  });
+}
+function pauseVoice(){
+  if(CLIP_MODE){ try{ clipPlayers[clipCur].pause(); }catch(e){} return; }
+  if(CAN_SPEAK){ try{ speechSynthesis.pause(); }catch(e){} }
+}
+function resumeVoice(){
+  if(CLIP_MODE){
+    const a = clipPlayers[clipCur];
+    if(audible() && a.src && !a.ended && a.currentTime > 0){ try{ a.play().catch(()=>{}); }catch(e){} }
+    return;
+  }
+  if(CAN_SPEAK){ try{ speechSynthesis.resume(); }catch(e){} }
+}
+
+if(CAN_SPEAK && !CLIP_MODE){
   try{
     speechSynthesis.getVoices();
     speechSynthesis.addEventListener('voiceschanged', ()=>{ voiceCache = null; pickVoice(); });
@@ -663,13 +719,53 @@ if(CAN_SPEAK){
   window.addEventListener('beforeunload', ()=>{ try{ speechSynthesis.cancel(); }catch(e){} });
 }
 
-function stopSpeech(){ if(CAN_SPEAK){ try{ speechSynthesis.cancel(); }catch(e){} } }
+function stopSpeech(){
+  if(CLIP_MODE){ clipPlayers.forEach(a => { try{ a.pause(); }catch(e){} }); return; }
+  if(CAN_SPEAK){ try{ speechSynthesis.cancel(); }catch(e){} }
+}
+
+/* One recorded clip per step. Resolves when the clip ends. A clip already
+   playing (started inside the tap that turned the voice on) is followed, not
+   restarted. The worst-case release counts only unpaused time, so a long pause
+   never skips a step. */
+function speakClip(text){
+  const k = clipIndex(text), src = NARRATION_CLIPS[k];
+  if(!src) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let player = clipPlayers[clipCur];
+    const following = player.src === src && !player.paused && !player.ended;
+    if(!following){
+      stopSpeech();
+      const other = clipPlayers[1 - clipCur];
+      if(other.src === src){ clipCur = 1 - clipCur; player = other; }
+      else { player.src = src; }
+      try{ player.currentTime = 0; }catch(e){}
+    }
+    let settled = false, waited = 0, tick = null;
+    const finish = ok => {
+      if(settled) return; settled = true; clearInterval(tick);
+      player.onended = null; player.onerror = null; resolve(ok);
+    };
+    player.playbackRate = speed();
+    player.volume = volume;
+    player.onended = () => finish(true);
+    player.onerror = () => finish(false);
+    if(!following){ const p = player.play(); if(p && p.catch) p.catch(() => finish(false)); }
+    preloadClip(k + 1);
+    tick = setInterval(() => {
+      if(!tourPaused) waited += 500;
+      const limit = isFinite(player.duration) ? (player.duration * 1000) / speed() + 4000 : 120000;
+      if(waited > limit) finish(false);
+    }, 500);
+  });
+}
 
 /* Resolves when the sentence has been read, so the tour waits for the voice
    instead of guessing at it. Resolves at once when there is nothing to hear,
    and can never hang: a worst-case timer always releases it. */
 function speak(text){
   if(!audible() || !text) return Promise.resolve(false);
+  if(CLIP_MODE) return speakClip(text);
   return new Promise(resolve => {
     let settled = false;
     const finish = ok => { if(settled) return; settled = true; resolve(ok); };
@@ -693,8 +789,8 @@ async function hold(ms, token){
   let waited=0;
   while(waited<ms){
     if(token!==undefined && token!==tourToken) throw new Error('superseded');
-    while(tourPaused && (token===undefined || token===tourToken)) await sleep(110);
-    await sleep(80); waited+=80;
+    while(tourPaused && (token===undefined || token===tourToken)) await rawSleep(110);
+    await rawSleep(80); waited+=80;
   }
   if(token!==undefined && token!==tourToken) throw new Error('superseded');
 }
@@ -764,7 +860,8 @@ $('tourDots').addEventListener('click', e=>{
 $('tourToggle').addEventListener('click',()=>{
   if(tourAuto){
     tourPaused = !tourPaused;
-    if(CAN_SPEAK){ try{ tourPaused ? speechSynthesis.pause() : speechSynthesis.resume(); }catch(e){} }
+    hiddenPause = false;
+    tourPaused ? pauseVoice() : resumeVoice();
     updateTourUI();
   }
   else { playFrom(Math.min(currentStep+1, TOUR.length-1), true); }   // resume auto from here
@@ -785,6 +882,7 @@ $('tourVoice').addEventListener('click',()=>{
   if(voiceOn && muted) muted = false;
   updateTourUI();
   if(!voiceOn){ stopSpeech(); return; }
+  if(CLIP_MODE) unlockClips();
   const line = TOUR[currentStep] ? TOUR[currentStep].text : 'Voice on.';
   speak(line);
 });
@@ -801,6 +899,7 @@ $('tourMute').addEventListener('click',()=>{
 $('tourVol').addEventListener('input', e=>{
   volume = Math.max(0, Math.min(1, Number(e.target.value) / 100));
   if(volume > 0 && muted) muted = false;
+  clipPlayers.forEach(a => { a.volume = volume; });
   if(volume === 0) stopSpeech();
   updateTourUI();
 });
@@ -808,6 +907,18 @@ $('tourVol').addEventListener('change', ()=>{
   if(audible() && TOUR[currentStep]) speak(TOUR[currentStep].text);
 });
 $('tourReplay').addEventListener('click',()=>{ resetMockup(); playFrom(0, true); });
+/* A page out of view (another tab, another app, a locked phone) has its timers
+   slowed or stopped by the browser while recorded audio may keep going, which
+   is how the voice and the picture drift apart. So the tour pauses itself when
+   the page is hidden and carries on from the same spot when it comes back. */
+let hiddenPause = false;
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    if(tourAuto && !tourPaused){ hiddenPause = true; tourPaused = true; pauseVoice(); updateTourUI(); }
+  } else if(hiddenPause){
+    hiddenPause = false; tourPaused = false; resumeVoice(); updateTourUI();
+  }
+});
 const toFeedback = ()=>{ stopTour(); hideNarration(); spotOff(); openApproval(); };
 $('tourFeedback').addEventListener('click', toFeedback);
 $('reviewBtn').addEventListener('click', toFeedback);
@@ -937,7 +1048,7 @@ async function showHero(){
   await new Promise(res=>{
     let done=false;
     const go=()=>{ if(done) return; done=true; clearInterval(tick); updateTourUI(); res(); };
-    $('heroStart').addEventListener('click', go, { once:true });
+    $('heroStart').addEventListener('click', () => { if(CLIP_MODE) unlockClips(); go(); }, { once:true });
     h.addEventListener('click', e=>{ if(e.target===h) go(); });
     setTimeout(go, 7400);
   });
