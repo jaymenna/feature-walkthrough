@@ -416,6 +416,21 @@ const FEEDBACK_EMAIL = '';   // your address — enables the "Email it" button
 const WEBHOOK_URL    = '';   // optional: your own Slack or Discord incoming webhook
 const WEBHOOK_STYLE  = 'slack';   // 'slack' or 'discord'
 
+/* The narration voice. Pick one:
+     'builtin'     the browser's own voice, already on the viewer's machine.
+                   Nothing is downloaded, and it works with the network off.
+     'elevenlabs'  a recorded ElevenLabs clip for every step, listed in
+                   VOICE_CLIPS. scripts/make_voice_clips.py makes the clips.
+     'none'        no voice. The tour paces itself and the voice controls hide. */
+const VOICE = 'builtin';
+
+/* For 'elevenlabs' only: one clip per TOUR step, in the same order. An entry
+   is a path beside this file ('voice/step-01.mp3'), a full URL, or a
+   data:audio/mpeg;base64,... URI when the file must play with no network.
+   The player loads the clips one at a time, a few steps ahead of the viewer,
+   never all of them at the start. */
+const VOICE_CLIPS = [];
+
 /* ══════════════════════════════════════════════════════════════════════════
    7. MOCKUP STATE AND RENDERING — YOURS
    ──────────────────────────────────────────────────────────────────────────
@@ -572,17 +587,34 @@ function placeNarration(target){
 
 /* A pause-aware wait that abandons itself if a newer jump supersedes it. */
 /* ─── Voice, speed, mute and volume ────────────────────────────────────────
-   The narration is read by the browser's own speech engine, using a voice
-   already installed on the machine. That keeps the promise the rest of this
-   file makes: it still speaks on a plane with the wifi off, and nothing is
-   ever fetched. Speed scales the step timing and the speaking rate together
-   so the two cannot drift apart. */
+   Every step has its own narration: a sentence read by the browser's own
+   speech engine ('builtin'), or that step's own recorded clip ('elevenlabs').
+   A step starts its narration, runs its screen, and waits for that
+   narration to end. Then there is a fixed quiet gap, and only then does the
+   next step begin. Nothing follows one long track, so the voice and the
+   screen cannot drift apart. Speed scales the step timing and the speaking
+   rate together. */
 const SPEEDS = [1, 1.5, 2, 0.75];
 let speedIx = 0, voiceOn = false, muted = false, volume = .6;
 const speed = () => SPEEDS[speedIx];
+const VOICE_PACE      = 0.9;    // the whole tour plays 10% slower than 1x used to
+const STEP_GAP_MS     = 1500;   // a full 1.5 s of quiet between one step and the next
+const CLIPS_AHEAD_MIN = 2;      // always keep at least the next two clips loaded
+const CLIPS_AHEAD_MAX = 8;      // load further ahead when there is time, up to this many
+const CLIP_WAIT_MS    = 10000;  // how long a step waits for a clip that is still loading
+const pace = () => speed() * VOICE_PACE;
 const CAN_SPEAK = typeof window !== 'undefined' && 'speechSynthesis' in window
                   && typeof SpeechSynthesisUtterance === 'function';
-const audible = () => voiceOn && !muted && volume > 0 && CAN_SPEAK;
+const USES_CLIPS = VOICE === 'elevenlabs';
+const HAS_VOICE  = VOICE === 'builtin' ? CAN_SPEAK
+                 : USES_CLIPS ? VOICE_CLIPS.length > 0 && typeof Audio === 'function'
+                 : false;
+const audible = () => HAS_VOICE && voiceOn && !muted && volume > 0;
+
+/* What happened, in order, for the checks in reference/verifying.md. */
+window.__walkthrough = { events: [], clips: () => clipState() };
+const logEvent = (type, step) =>
+  window.__walkthrough.events.push({ t: Math.round(performance.now()), type, step });
 
 /* Chrome fills the voice list asynchronously, so ask now and again on the
    event, and keep whatever was found. */
@@ -612,13 +644,137 @@ if(CAN_SPEAK){
   window.addEventListener('beforeunload', ()=>{ try{ speechSynthesis.cancel(); }catch(e){} });
 }
 
-function stopSpeech(){ if(CAN_SPEAK){ try{ speechSynthesis.cancel(); }catch(e){} } }
+/* ─── Recorded clips: one per step, loaded a few steps ahead ───────────────
+   One download at a time, nearest first: the step on screen, then the steps
+   after it in order. At least CLIPS_AHEAD_MIN clips ahead are always being
+   kept ready, and when there is time it carries on up to CLIPS_AHEAD_MAX.
+   It never loads the whole tour at the start. Each clip is held as a Blob URL
+   once it arrives, so stepping back never downloads it again. */
+const narrator = USES_CLIPS ? new Audio() : null;
+if(narrator) narrator.preload = 'auto';
+const clipUrl = [];          // step index -> playable URL, once loaded
+const clipWaiters = [];      // step index -> callbacks waiting for that clip
+let clipFrom = 0, clipLoading = -1, clipAbort = null;
 
-/* Resolves when the sentence has been read, so the tour waits for the voice
-   instead of guessing at it. Resolves at once when there is nothing to hear,
-   and can never hang: a worst-case timer always releases it. */
-function speak(text){
-  if(!audible() || !text) return Promise.resolve(false);
+function clipState(){
+  return { from: clipFrom, loading: clipLoading,
+           loaded: clipUrl.map((u, i) => u ? i : -1).filter(i => i >= 0) };
+}
+function nextClipToLoad(){
+  const last = Math.min(VOICE_CLIPS.length - 1, clipFrom + CLIPS_AHEAD_MAX);
+  for(let k = clipFrom; k <= last; k++) if(!clipUrl[k] && VOICE_CLIPS[k]) return k;
+  return -1;
+}
+/* Called whenever the viewer reaches a step. A download is dropped only when
+   the viewer has jumped past it, or when it is far ahead while the step on
+   screen or one of the next two is still missing, so those come first. */
+function loadClipsFrom(i){
+  if(!USES_CLIPS) return;
+  clipFrom = Math.max(0, i);
+  if(clipLoading !== -1 && clipAbort){
+    let nearMissing = false;
+    for(let k = clipFrom; k <= clipFrom + CLIPS_AHEAD_MIN && k < VOICE_CLIPS.length; k++)
+      if(!clipUrl[k] && k !== clipLoading) nearMissing = true;
+    if(clipLoading < clipFrom || (clipLoading > clipFrom + CLIPS_AHEAD_MIN && nearMissing))
+      clipAbort.abort();
+  }
+  pumpClips();
+}
+async function pumpClips(){
+  if(!USES_CLIPS || clipLoading !== -1) return;
+  const i = nextClipToLoad();
+  if(i < 0) return;
+  clipLoading = i;
+  const src = VOICE_CLIPS[i];
+  let url = null;
+  try{
+    clipAbort = typeof AbortController === 'function' ? new AbortController() : null;
+    const res = await fetch(src, clipAbort ? { signal: clipAbort.signal } : undefined);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    url = URL.createObjectURL(await res.blob());
+  }catch(e){
+    /* A page opened from disk cannot fetch its own files, but the audio
+       element can still read them straight from the path. An aborted
+       download is simply tried again later. */
+    if(!(e && e.name === 'AbortError')) url = src;
+  }
+  clipAbort = null; clipLoading = -1;
+  if(url){
+    clipUrl[i] = url; logEvent('clip-loaded', i);
+    (clipWaiters[i] || []).forEach(f => f()); clipWaiters[i] = [];
+  }
+  pumpClips();
+}
+function waitForClip(i, ms){
+  if(clipUrl[i]) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const t = setTimeout(() => resolve(false), ms);
+    (clipWaiters[i] = clipWaiters[i] || []).push(() => { clearTimeout(t); resolve(true); });
+  });
+}
+
+let clipCall = 0, finishClip = null, unlockCall = -1;
+let narration = Promise.resolve(false);   // the narration of the step on screen
+
+function stopSpeech(){
+  if(CAN_SPEAK && !USES_CLIPS){ try{ speechSynthesis.cancel(); }catch(e){} }
+  if(narrator){ clipCall++; try{ narrator.pause(); }catch(e){} if(finishClip) finishClip(false); }
+}
+
+/* Plays one step's clip. Resolves true when the clip ends, false if it
+   cannot play. It can never hang: if the clip does not start within 8 s, or
+   runs 4 s past its own length, the step is released. Paused time does not
+   count against either limit. When the clip is already loaded, play() is
+   called before anything waits, so a tap that turns the voice on is the
+   gesture iOS needs. */
+async function playClip(i){
+  stopSpeech();
+  const call = ++clipCall;
+  loadClipsFrom(i);
+  if(!clipUrl[i]){
+    const ok = await waitForClip(i, CLIP_WAIT_MS);
+    if(!ok || call !== clipCall || !audible()) return false;
+  }
+  return new Promise(resolve => {
+    const a = narrator;
+    let settled = false, started = false, ran = 0, last = performance.now();
+    const finish = ok => {
+      if(settled) return; settled = true;
+      clearInterval(watch); a.onended = a.onerror = a.onplaying = null;
+      if(finishClip === finish) finishClip = null;
+      logEvent(ok ? 'clip-end' : 'clip-stopped', i);
+      resolve(ok);
+    };
+    finishClip = finish;
+    a.onended = () => finish(true);
+    a.onerror = () => finish(false);
+    a.onplaying = () => { if(!started){ started = true; logEvent('clip-start', i); } };
+    const watch = setInterval(() => {
+      const now = performance.now(), dt = now - last; last = now;
+      if(call !== clipCall){ finish(false); return; }
+      if(tourPaused) return;
+      ran += dt;
+      if(!started && ran > 8000){ finish(false); return; }
+      const limit = isFinite(a.duration) && a.duration > 0
+        ? (a.duration / (a.playbackRate || 1)) * 1000 + 4000 : 120000;
+      if(ran > limit) finish(false);
+    }, 200);
+    try{
+      a.src = clipUrl[i];
+      a.muted = false;
+      a.volume = volume;
+      a.defaultPlaybackRate = a.playbackRate = pace();
+      a.preservesPitch = a.webkitPreservesPitch = true;
+      const p = a.play();
+      if(p && p.catch) p.catch(() => finish(false));
+    }catch(e){ finish(false); }
+  });
+}
+
+/* Reads one sentence with the browser's own voice. Resolves when it has
+   been read, false if it could not be, and a worst-case timer always
+   releases it. */
+function speakBuiltin(text){
   return new Promise(resolve => {
     let settled = false;
     const finish = ok => { if(settled) return; settled = true; resolve(ok); };
@@ -627,15 +783,54 @@ function speak(text){
       const said = String(text).replace(/\s+/g, ' ').trim();
       const u = new SpeechSynthesisUtterance(said);
       const v = pickVoice(); if(v) u.voice = v;
-      u.rate = Math.min(2.4, 1.02 * speed());
+      u.rate = Math.min(2.4, 1.02 * pace());
       u.pitch = 1;
       u.volume = volume;
       u.onend = () => finish(true);
       u.onerror = () => finish(false);
       speechSynthesis.speak(u);
-      setTimeout(() => finish(false), 1400 + (said.length * 95) / speed());
+      setTimeout(() => finish(false), 1400 + (said.length * 95) / pace());
     }catch(e){ finish(false); }
   });
+}
+
+/* Starts the narration of step i, whichever voice the page uses. The step
+   on screen always waits for the newest narration, so pressing Voice or
+   unmuting mid-step re-reads the step and the tour waits for that reading. */
+function speakStep(i){
+  const step = TOUR[i];
+  narration = (!step || !audible()) ? Promise.resolve(false)
+            : USES_CLIPS ? playClip(i) : speakBuiltin(step.text);
+  return narration;
+}
+async function narrationSettled(){
+  let p, ok;
+  do{ p = narration; ok = await p; } while(p !== narration);
+  return ok;
+}
+
+/* iOS and Safari only allow sound that starts inside a tap. Show me calls
+   this inside its own click: the recorded voice gets a muted play of the
+   first clip, the built-in voice an empty sentence. Both stay unlocked for
+   the rest of the visit. */
+function unlockVoice(){
+  if(!HAS_VOICE) return;
+  voiceOn = true; muted = false;
+  if(USES_CLIPS){
+    try{
+      unlockCall = clipCall;
+      narrator.muted = true;
+      narrator.src = clipUrl[0] || VOICE_CLIPS[0];
+      const done = () => {
+        if(unlockCall === clipCall){ try{ narrator.pause(); }catch(e){} }
+        narrator.muted = false;
+      };
+      const p = narrator.play();
+      if(p && p.then) p.then(done, done); else done();
+    }catch(e){ narrator.muted = false; }
+  } else {
+    try{ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }catch(e){}
+  }
 }
 
 async function hold(ms, token){
@@ -662,10 +857,10 @@ function updateTourUI(){
   $('tourSpeed').textContent = speed() + '\u00d7';
   $('tourVoice').textContent = voiceOn ? 'Voice Is On' : 'Voice Is Off';
   $('tourVoice').classList.toggle('on', voiceOn);
-  $('tourVoice').style.display = CAN_SPEAK ? '' : 'none';
+  $('tourVoice').style.display = HAS_VOICE ? '' : 'none';
   /* Mute and volume only exist while there is something to hear. */
-  $('tourMute').hidden = !(CAN_SPEAK && voiceOn);
-  $('tourVol').hidden  = !(CAN_SPEAK && voiceOn);
+  $('tourMute').hidden = !(HAS_VOICE && voiceOn);
+  $('tourVol').hidden  = !(HAS_VOICE && voiceOn);
   $('tourMute').textContent = muted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
   $('tourMute').title = muted ? 'Unmute the narration' : 'Mute the narration';
   $('tourMute').classList.toggle('on', muted);
@@ -680,20 +875,29 @@ async function playFrom(i, auto){
     for(let k=i; k<TOUR.length; k++){
       if(token!==tourToken) return;
       currentStep = k; updateTourUI();
+      logEvent('step', k);
       spotOff();
       narrate(TOUR[k].text, k+1, TOUR.length);
-      const spoken = speak(TOUR[k].text);
-      await hold(Math.round(900 / speed()), token);
+      const began = performance.now();
+      loadClipsFrom(k);
+      speakStep(k);
+      await hold(Math.round(900 / pace()), token);
       await TOUR[k].run();
       if(token!==tourToken) return;
       if(!auto){ tourAuto=false; updateTourUI(); return; }   // single step: stop here
-      if(audible()){
-        await spoken;                                   // let the sentence finish
-        if(token!==tourToken) return;
-        await hold(Math.round(620 / speed()), token);
-      } else {
-        await hold(Math.round((TOUR[k].text.length > 95 ? 3400 : 2600) / speed()), token);
+      /* Wait for this step's own narration to end. With no voice, the step
+         holds for its silent reading time. If the voice was on but this
+         step's narration could not play, it holds for that same reading
+         time, less the time it has already been on screen. */
+      const tried = audible();
+      const spoken = tried ? await narrationSettled() : false;
+      if(token!==tourToken) return;
+      if(!spoken){
+        const silent = Math.round((TOUR[k].text.length > 95 ? 3400 : 2600) / pace());
+        const used = tried ? Math.round(performance.now() - began) : 0;
+        await hold(Math.max(0, silent - used), token);
       }
+      if(k < TOUR.length-1){ logEvent('gap', k); await hold(STEP_GAP_MS, token); }
     }
     if(token!==tourToken) return;
     hideNarration(); spotOff();
@@ -713,7 +917,9 @@ $('tourDots').addEventListener('click', e=>{
 $('tourToggle').addEventListener('click',()=>{
   if(tourAuto){
     tourPaused = !tourPaused;
-    if(CAN_SPEAK){ try{ tourPaused ? speechSynthesis.pause() : speechSynthesis.resume(); }catch(e){} }
+    if(USES_CLIPS){
+      if(finishClip){ try{ tourPaused ? narrator.pause() : narrator.play().catch(()=>{}); }catch(e){} }
+    } else if(CAN_SPEAK){ try{ tourPaused ? speechSynthesis.pause() : speechSynthesis.resume(); }catch(e){} }
     updateTourUI();
   }
   else { playFrom(Math.min(currentStep+1, TOUR.length-1), true); }   // resume auto from here
@@ -734,8 +940,7 @@ $('tourVoice').addEventListener('click',()=>{
   if(voiceOn && muted) muted = false;
   updateTourUI();
   if(!voiceOn){ stopSpeech(); return; }
-  const line = TOUR[currentStep] ? TOUR[currentStep].text : 'Voice on.';
-  speak(line);
+  speakStep(currentStep);
 });
 /* Mute silences it now; the tour then paces itself the way it does in
    silence, and unmuting picks the voice up at the next step. */
@@ -743,18 +948,21 @@ $('tourMute').addEventListener('click',()=>{
   muted = !muted;
   updateTourUI();
   if(muted){ stopSpeech(); return; }
-  if(TOUR[currentStep]) speak(TOUR[currentStep].text);
+  speakStep(currentStep);
 });
-/* Dragging to zero is a mute. The new level is heard on release rather than
-   on every pixel of the drag. */
+/* Dragging to zero is a mute. The built-in voice hears the new level on
+   release, by reading the step again; a recorded clip changes level as the
+   slider moves and keeps playing. */
 $('tourVol').addEventListener('input', e=>{
   volume = Math.max(0, Math.min(1, Number(e.target.value) / 100));
   if(volume > 0 && muted) muted = false;
+  if(narrator) narrator.volume = volume;
   if(volume === 0) stopSpeech();
   updateTourUI();
 });
 $('tourVol').addEventListener('change', ()=>{
-  if(audible() && TOUR[currentStep]) speak(TOUR[currentStep].text);
+  if(USES_CLIPS && finishClip) return;
+  if(audible()) speakStep(currentStep);
 });
 $('tourReplay').addEventListener('click',()=>{ resetMockup(); playFrom(0, true); });
 const toFeedback = ()=>{ stopTour(); hideNarration(); spotOff(); openApproval(); };
@@ -870,7 +1078,7 @@ async function showHero(){
   await new Promise(res=>{
     let done=false;
     const go=()=>{ if(done) return; done=true; clearInterval(tick); updateTourUI(); res(); };
-    $('heroStart').addEventListener('click', go, { once:true });
+    $('heroStart').addEventListener('click', ()=>{ unlockVoice(); go(); }, { once:true });
     h.addEventListener('click', e=>{ if(e.target===h) go(); });
     setTimeout(go, 7400);
   });
@@ -883,6 +1091,7 @@ $('apSubtitle').textContent = `${PRODUCT} — ${FEATURE}. Your answer goes back 
 $('heroEyebrow').textContent = `${PRODUCT} · ${FEATURE}`;
 $('apEmail').style.display = FEEDBACK_EMAIL ? '' : 'none';
 resetMockup(); updateTourUI();
+loadClipsFrom(0);   // the first clips load while the intro card is on screen
 /* A logo with no src renders as a broken-image icon, which on a page that
    promises to fetch nothing is the worst possible first impression. If there
    is nothing to show, show nothing. */
