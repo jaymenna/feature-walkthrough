@@ -37,8 +37,9 @@ itself:
   dimming everything else
 - the screen actually moves — lists filter, panels open, settings cycle through real
   values and the numbers change while you watch
-- **it reads itself aloud**, using a voice already installed on the viewer's
-  machine, so the narration works with the network off like the rest of the file
+- **it reads itself aloud**, one step at a time, using a voice already installed on
+  the viewer's machine or a recorded ElevenLabs clip for each step, with a 1.5-second
+  pause between steps
 - the viewer can pause, step, jump to any point, replay, change the speed
   (1×, 1.5×, 2×, 0.75×), turn the voice on or off, mute it, or set the volume
 - at the end it asks: does this look right? Their answer comes back as copyable
@@ -51,8 +52,17 @@ looks like the customer's own product and speaks in their own words.
 
 ### About the voice
 
-The narration is spoken by the browser's own speech engine, so nothing is
-embedded and nothing is fetched. What that means in practice:
+Each walkthrough picks its voice with `VOICE` in the page: `'builtin'`, `'elevenlabs'`
+or `'none'`. Every step has its own narration, never one long track, and the next
+step starts only after that narration ends and a 1.5-second pause has passed.
+
+A recorded ElevenLabs voice has one clip per step, made by
+`scripts/make_voice_clips.py`. The player loads those clips one at a time, keeping at
+least the next two ready, and never downloads the whole tour at the start. See
+SKILL.md for the details.
+
+The default, `'builtin'`, is spoken by the browser's own speech engine, so nothing
+is embedded and nothing is fetched. What that means in practice:
 
 | Where it opens | Voice |
 | --- | --- |
@@ -61,9 +71,9 @@ embedded and nothing is fetched. What that means in practice:
 | Linux | Usually silent — desktop browsers there have no speech engine unless `speech-dispatcher` and `espeak` are installed. |
 
 Browsers refuse to play audio until the viewer has interacted with the page, so
-the walkthrough starts silent and the **Voice Is Off** button turns it on. That
-press is also what unlocks audio on iPhone and Safari, which is why the button
-begins speaking inside the tap itself.
+the voice turns on when the viewer presses **Show me**, and that tap is what
+unlocks audio on iPhone and Safari. If the intro card times out instead, the
+walkthrough starts silent and the **Voice Is Off** button turns it on.
 
 ## Install
 

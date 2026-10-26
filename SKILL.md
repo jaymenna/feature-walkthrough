@@ -38,17 +38,55 @@ all of it without you writing a line:
 | Speaker | Mutes and unmutes without turning the narration off. |
 | Slider | Sets the narration volume. Dragging it to zero is a mute. |
 
-Two things are worth knowing about the voice. It uses a voice already installed on
-the viewer's machine, so the narration works with the network off, exactly like the
-rest of the file. And browsers refuse to play audio until the viewer has interacted
-with the page, so the voice switches itself on only when they actually press **Show
-me**. If the intro card simply times out, the walkthrough starts silent and the Voice
-button turns it on.
+### The voice
 
-Speed changes the step timing and the speaking rate together, and applies from the
-next sentence so the current one is not cut off. When the voice is on, each step
-waits for its sentence to finish rather than guessing at a duration, so the narration
-and the pacing cannot drift apart.
+Set `VOICE` in the CONFIG section to one of three values:
+
+| `VOICE` | What the viewer hears |
+| --- | --- |
+| `'builtin'` (default) | A voice already installed on the viewer's machine. Nothing is downloaded, and it works with the network off. |
+| `'elevenlabs'` | A recorded ElevenLabs clip for every step, listed in `VOICE_CLIPS`. |
+| `'none'` | No voice. The tour paces itself and the voice controls are hidden. |
+
+**Every step has its own narration.** There is no single long voice track. A step
+starts its own sentence or clip, runs its screen, and waits for that narration to
+end. Then there is a full **1.5-second** gap, and only then does the next step start.
+The voice and the screen cannot drift apart, and a viewer who jumps to any step
+hears that step's own narration.
+
+**The tour plays 10% slower than the old 1x.** The engine applies one pace,
+`VOICE_PACE = 0.9`, to the speaking rate, the recorded clips (pitch kept) and the
+silent step timing. The speed button multiplies it.
+
+**Recorded clips load a few steps ahead, one at a time.** For `'elevenlabs'` the
+player downloads one clip at a time, nearest first: the step on screen, then the
+steps after it in order. The next two clips are always kept ready, and when there is
+time it carries on up to eight steps ahead. It never loads the whole tour at the
+start, and a clip that has arrived is kept, so stepping back does not download it
+again. If the viewer jumps ahead, the clips for the new step and the two after it
+come first. A clip that cannot play does not stop the tour: that step falls back to
+its silent reading time.
+
+To make the clips, run:
+
+```
+ELEVENLABS_API_KEY=... python scripts/make_voice_clips.py path/to/walkthrough.html --update-html
+```
+
+It reads each step's `text` from `TOUR`, asks ElevenLabs for that sentence alone,
+writes `voice/step-01.mp3`, `voice/step-02.mp3`, ... beside the page, and sets
+`VOICE` and `VOICE_CLIPS` in the page. Run it again after you change a sentence: only
+the changed steps are asked for again. `--say "TRIA=Tree-uh"` changes how a term is
+spoken without changing the caption. `--voice-id` picks the voice (the default is
+Eric). Add `--embed` to put the clips inside the page as `data:` URIs, so it stays
+one file that plays with the network off; the clips still play one step at a time.
+
+Browsers refuse to play sound until the viewer has interacted with the page, so the
+voice switches itself on only when they press **Show me**, and that tap unlocks the
+sound for the rest of the visit. If the intro card simply times out, the walkthrough
+starts silent and the Voice button turns it on.
+
+Speed applies from the next sentence, so the current one is not cut off.
 
 **Because a viewer can jump to any step, every step must set up its own screen.**
 Never write a step whose `run` depends on the step before it having run: put the
@@ -158,7 +196,9 @@ Never modify the codebase you were pointed at. Read from it only.
 
 **One file, no dependencies.** No CDN links, no fonts fetched over the network, no
 frameworks. It has to work on a laptop with no internet, opened from a file path,
-possibly years from now.
+possibly years from now. The one exception is the recorded voice: its clips may sit
+in a `voice/` folder beside the page when the page is hosted. Send that folder with
+the page, or use `--embed` when the page must travel as one file.
 
 ## Reference
 
