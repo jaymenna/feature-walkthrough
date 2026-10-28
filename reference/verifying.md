@@ -49,6 +49,29 @@ Look at the screenshot and check:
 - the dimming is on, and the lit region is the thing the caption is talking about
 - the transport bar is at the bottom with one dot per step
 
+## 2b. It fits a phone, upright and sideways
+
+Most reviewers open the link on a phone. Check a phone held sideways, a phone
+held upright, a tablet, and a desktop. With Playwright:
+
+```js
+const { chromium, devices } = require('playwright');
+for (const d of ['iPhone 14 landscape', 'iPhone 14', 'iPad Pro 11', null]) {
+  const ctx = await browser.newContext(d ? devices[d] : { viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto('file:///absolute/path/to/walkthrough.html');
+  // ...tap Show me, jump to a few steps, take screenshots
+}
+```
+
+On every size, check:
+
+- nothing scrolls sideways (`document.documentElement.scrollWidth` equals `innerWidth`)
+- the whole mockup is on screen, and the spotlight lands on the right element
+- the caption and the transport bar do not cover each other
+- the intro card's Show me button is visible without scrolling
+- a tap (not a click) on anything the tour opens still works
+
 ## 3. The things worth clicking through yourself
 
 Open it in a real browser and confirm:
