@@ -245,7 +245,6 @@ body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 .choice.on .ct { color: inherit; }
 .choice[data-v="approve"].on,
 .choice[data-v="approve_comments"].on { border-color: #2f9e44; color: #2f9e44; background: rgba(47,158,68,.05); }
-.choice[data-v="changes"].on          { border-color: #f08c00; color: #f08c00; background: rgba(240,140,0,.05); }
 .choice[data-v="reject"].on           { border-color: var(--alert); color: var(--alert); background: rgba(224,49,49,.05); }
 .ap-actions { display: flex; gap: 10px; margin-top: 22px; align-items: center; }
 .ap-actions .grow { flex: 1; }
@@ -405,12 +404,16 @@ body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
       <div class="ap-field" id="fDecision">
         <label class="ap-label">Your decision <span class="req">*</span></label>
         <div class="choices" id="apChoices">
-          <div class="choice" data-v="approve"><div class="dot"></div><div><div class="ct">Approve</div><div class="cs">Build it as shown</div></div></div>
-          <div class="choice" data-v="approve_comments"><div class="dot"></div><div><div class="ct">Approve with comments</div><div class="cs">Go ahead, with tweaks</div></div></div>
-          <div class="choice" data-v="changes"><div class="dot"></div><div><div class="ct">Request changes</div><div class="cs">Close, but not yet</div></div></div>
-          <div class="choice" data-v="reject"><div class="dot"></div><div><div class="ct">Reject</div><div class="cs">This isn't what we want</div></div></div>
+          <div class="choice" data-v="approve"><div class="dot"></div><div><div class="ct">Approved</div><div class="cs">Build it as shown</div></div></div>
+          <div class="choice" data-v="approve_comments"><div class="dot"></div><div><div class="ct">Approve with the following changes</div><div class="cs">Say the changes below</div></div></div>
+          <div class="choice" data-v="reject"><div class="dot"></div><div><div class="ct">Denied</div><div class="cs">Do not build this</div></div></div>
         </div>
         <div class="ap-err">Pick one.</div>
+      </div>
+
+      <div class="ap-field" id="fAssign">
+        <label class="ap-label" for="apAssign">Assign the node to</label>
+        <select id="apAssign" style="width:100%;padding:9px 10px;border:1.5px solid #ced4da;border-radius:6px;font:inherit;font-size:14px;background:#fff"></select>
       </div>
 
       <div class="ap-field" id="fComment">
@@ -453,12 +456,23 @@ const PRODUCT  = 'Product';           // the application this feature belongs to
 const FEATURE  = 'Feature';           // the feature being proposed
 
 /* How the reviewer's answer gets back to you.
-   Leave all three blank and the page still works: the reviewer gets their
+   Leave FEEDBACK_ENDPOINT blank and the page still works: the reviewer gets their
    review as copyable text, a downloadable file, and a pre-filled email.
-   Nothing is ever sent anywhere without the reviewer pressing a button. */
-const FEEDBACK_EMAIL = '';   // your address — enables the "Email it" button
-const WEBHOOK_URL    = '';   // optional: your own Slack or Discord incoming webhook
-const WEBHOOK_STYLE  = 'slack';   // 'slack' or 'discord'
+   Nothing is ever sent anywhere without the reviewer pressing a button.
+   With FEEDBACK_ENDPOINT set, Send posts the decision to the mockup-feedback relay on
+   try.undtec.com, which posts it in the node's Slack channel with the assignee, the
+   walkthrough link and the next-step prompt. If the relay cannot be reached within 15
+   seconds, or answers anything but 2xx, the page says "Not posted to Slack" and offers
+   the copy / download / email path instead. It never says Sent when nothing was sent. */
+const TEMPLATE_VERSION = 2;     // the New Feature skill checks this line; do not remove it
+const FEEDBACK_EMAIL    = '';   // your address — enables the "Email it" button
+const FEEDBACK_ENDPOINT = '';   // 'https://try.undtec.com/mockups/api/feedback' when hosted on try.undtec.com
+const FEEDBACK_KEY      = '';   // the relay's shared key (public by design; it only lets a page post text)
+const PAGE_PATH         = '';   // '/mockups/<customer>/<channel name>/index.html' — the relay maps it to the channel
+const WALKTHROUGH_URL   = '';   // 'https://try.undtec.com/mockups/<customer>/<channel name>/'
+const NEXT_PROMPT       = '';   // 'Build <channel name> as approved' — the assignee pastes this into Claude Code
+const REVIEWER          = '';   // the node creator's name; pre-fills "Your name". That person decides.
+const ASSIGNEES         = {};   // { 'Jay Menna': 'UACR0M4RH', ... } names and Slack ids of the channel's members. No emails.
 
 /* The narration voice. Pick one:
      'builtin'     the browser's own voice, already on the viewer's machine.
@@ -1058,8 +1072,19 @@ $('apChoices').addEventListener('click', e=>{
 $('apCancel').addEventListener('click', closeApproval);
 $('apClose').addEventListener('click', closeApproval);
 
-const DECISION_LABEL = { approve:'APPROVED', approve_comments:'APPROVED WITH COMMENTS',
-  changes:'CHANGES REQUESTED', reject:'REJECTED' };
+const DECISION_LABEL = { approve:'APPROVED', approve_comments:'APPROVED WITH THE FOLLOWING CHANGES',
+  reject:'DENIED' };
+
+// One id per page load: the relay posts a repeat of the same submission only once.
+const SUBMISSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+(function fillAssignees(){
+  const sel = $('apAssign'); if(!sel) return;
+  const names = Object.keys(ASSIGNEES);
+  if(!names.length){ $('fAssign').style.display='none'; return; }
+  names.forEach(n => { const o=document.createElement('option'); o.textContent=n; o.value=n; sel.appendChild(o); });
+  if(REVIEWER) $('apName').value = REVIEWER;
+})();
 
 function buildPayloadText(v){
   return [
@@ -1067,9 +1092,12 @@ function buildPayloadText(v){
     `${DECISION_LABEL[v.decision]}`,
     ``,
     `Reviewer: ${v.name}${v.org ? ` — ${v.org}` : ''}`,
+    v.assign ? `Assign the node to: ${v.assign}` : null,
+    WALKTHROUGH_URL ? `Feature walkthrough: ${WALKTHROUGH_URL}` : null,
+    NEXT_PROMPT ? `Next step, paste into Claude Code: ${NEXT_PROMPT}` : null,
     `When: ${v.when}`,
     v.comment ? `Comments:\n  ${v.comment.replace(/\n/g,'\n  ')}` : `Comments: none`,
-  ].join('\n');
+  ].filter(x => x !== null).join('\n');
 }
 
 $('apSend').addEventListener('click', async ()=>{
@@ -1082,30 +1110,43 @@ $('apSend').addEventListener('click', async ()=>{
   if(commentRequired && !comment) ok=false;
   if(!ok){ (!name ? $('apName') : $('apComment')).focus(); return; }
 
-  const payload = { name, org, comment, decision,
+  const assign = $('fAssign').style.display==='none' ? '' : $('apAssign').value;
+  const payload = { name, org, comment, decision, assign,
     when: new Date().toLocaleString(undefined,{ dateStyle:'medium', timeStyle:'short' }) };
   const text = buildPayloadText(payload);
 
   const btn=$('apSend'); btn.disabled=true; btn.textContent='Sending…';
-  let delivered=false;
-  if(WEBHOOK_URL){
+  let delivered=false, tried=false;
+  if(FEEDBACK_ENDPOINT && FEEDBACK_KEY){
+    tried=true;
+    const ctl = typeof AbortController==='function' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(()=>ctl.abort(), 15000) : null;
     try{
-      // text/plain dodges the CORS preflight that Slack and Discord webhooks reject
-      const body = WEBHOOK_STYLE==='discord' ? { content: text } : { text };
-      await fetch(WEBHOOK_URL,{ method:'POST', headers:{'Content-Type':'text/plain'},
-                                body: JSON.stringify(body) });
-      delivered=true;
+      const slackId = ASSIGNEES[assign] || '';
+      const res = await fetch(FEEDBACK_ENDPOINT, { method:'POST', headers:{'Content-Type':'application/json'},
+        signal: ctl ? ctl.signal : undefined,
+        body: JSON.stringify({
+          key: FEEDBACK_KEY, path: PAGE_PATH, submission_id: SUBMISSION_ID,
+          subject: `${PRODUCT} — ${FEATURE}`,
+          decision, reviewer: name, org, comment,
+          mention: slackId ? `<@${slackId}>` : '', assignee: slackId ? `<@${slackId}>` : '',
+          assignee_name: assign, link: WALKTHROUGH_URL, prompt: NEXT_PROMPT,
+        }) });
+      delivered = res.ok;
     }catch(e){ delivered=false; }
+    if(timer) clearTimeout(timer);
   }
   btn.disabled=false; btn.textContent='Send feedback';
 
   $('apForm').style.display='none'; $('apDone').style.display='block';
-  $('apDoneTitle').textContent = delivered ? 'Sent — thank you' : 'Recorded — one more step';
+  $('apDoneTitle').textContent = delivered ? 'Sent — thank you' : (tried ? 'Not posted to Slack' : 'Recorded — one more step');
   $('apDoneMsg').textContent = delivered
-    ? 'Your review has been posted to the team.'
+    ? `Posted to Slack.${assign ? ` ${assign} has the walkthrough link and the prompt for the next step.` : ''}`
     : 'Copy this, download it, or use Email it — whichever suits you.';
   $('apPayload').textContent = text;
-  $('apHint').textContent = delivered ? '' : 'Nothing leaves this page until you choose one of the buttons above.';
+  $('apHint').textContent = delivered ? '' : (tried
+    ? 'Not posted to Slack: the relay did not answer. Nothing leaves this page until you choose one of the buttons above.'
+    : 'Nothing leaves this page until you choose one of the buttons above.');
   $('apEmail').style.display = FEEDBACK_EMAIL ? '' : 'none';
   window.__lastReview = { payload, text };
 });

@@ -172,9 +172,18 @@ Tell the user the full path to the file and that they can open it by
 double-clicking it or send it to anyone as an attachment.
 
 If they want the reviewer's answer to come back automatically rather than by
-copy and paste, read `reference/sharing-the-result.md` — it covers the optional
-webhook and how to put the file on a web address. Do not set any of that up
-unless they ask.
+copy and paste, read `reference/sharing-the-result.md` — it covers the
+try.undtec.com relay and how to put the file on a web address. Do not set any of
+that up unless they ask.
+
+The review card (template version 2, `TEMPLATE_VERSION = 2` in CONFIG) has exactly
+three choices: Approved, Approve with the following changes, Denied. It also has an
+"Assign the node to" list, filled from `ASSIGNEES` (name → Slack user id; the list
+hides when `ASSIGNEES` is empty), and `REVIEWER` pre-fills "Your name" with the node
+creator. With `FEEDBACK_ENDPOINT`, `FEEDBACK_KEY`, `PAGE_PATH`, `WALKTHROUGH_URL` and
+`NEXT_PROMPT` set, Send posts the decision to the relay, which posts it in the
+node's Slack channel with the assignee, the link and the prompt in a code block.
+`scripts/check_template.sh [page]` checks any page for all of this.
 
 ## Rules
 
