@@ -281,10 +281,13 @@ JavaScript parses and the page renders with the spotlight on the right element.
 Tell the user the full path to the file and that they can open it by
 double-clicking it or send it to anyone as an attachment.
 
-If they want the reviewer's answer to come back automatically rather than by
-copy and paste, read `reference/sharing-the-result.md` — it covers the
-try.undtec.com relay and how to put the file on a web address. Do not set any of
-that up unless they ask.
+**Every walkthrough goes up on try.undtec.com before you reply (Jay, 2026-11-09, HARD RULE).**
+Never leave it only on the local drive. Path: `/var/www/mockups/<client>/<node channel name>/index.html`
+on nodes-live (`root@159.203.67.106`). Nodes may already have made a placeholder there: `ls` the
+folder first, then `scp` the finished page (and its `voice/` folder) over it. Never delete, move or
+`rsync --delete` any file under `/var/www/try` or `/var/www/mockups` (TRY-001). Set a real
+`<title>`, check the live URL returns 200 with curl, and give the full https URL in the reply,
+not a local path. Read `reference/sharing-the-result.md` for the relay settings.
 
 **NEXT_PROMPT is the entire build prompt followed by the entire test plan (Jay, 2026-11-09),
 never one sentence.** Read `reference/next-prompt.md` before you set it. The Slack post has two
@@ -298,7 +301,8 @@ Code, which saves the email as a draft in their outgoing mailbox with the Underw
 template, never sent. Nothing about it goes to Slack. Never remove the checkbox.
 
 **Any email shown in a walkthrough is the person's own Google or Microsoft mailbox, not part of
-Underwriters Technologies.** Draw it as their email app (Gmail or Outlook Drafts), never as a panel inside the system.
+Underwriters Technologies.** Draw it as their email app (Gmail or Outlook Drafts) in its own
+window, labeled "Not part of Underwriters Technologies", never as a panel inside the system.
 
 The review card (template version 2, `TEMPLATE_VERSION = 2` in CONFIG) has exactly
 three choices: Approved, Approve with the following changes, Denied. It also has an
@@ -309,7 +313,22 @@ creator. With `FEEDBACK_ENDPOINT`, `FEEDBACK_KEY`, `PAGE_PATH`, `WALKTHROUGH_URL
 node's Slack channel with the assignee, the link and the prompt in a code block.
 `scripts/check_template.sh [page]` checks any page for all of this.
 
+**`ASSIGNEES` is every Underwriters Technologies employee, pulled live every time (Jay, 2026-11-09).**
+Never only the node creator, and never copied from memory or an old page. Pull
+`GET https://nodes.undtec.com/api/v1/people?limit=200` with your key from `~/.config/nodes/api_key`
+(read it in the shell, never print it), match each person to a Slack id by email with Slack
+`users.list` (token in `~/.config/nodes/slack_bot`), and skip the service accounts (Edward Lloyd,
+Post Man, Utility Account, Virtual People) and anyone with no Slack match. Names and Slack ids
+only, never emails. Pull again right before each publish.
+
 ## Rules
+
+**Never play a walkthrough on anyone's machine (Jay, 2026-11-09, HARD RULE).** The voice starts
+when "Show me" is pressed and plays out loud. Never press it, never load a walkthrough in any
+browser (headless or not) to "test" it, and never run the tour. Check a walkthrough only by
+static means: `scripts/check_template.sh`, a JavaScript parse, and curl for the HTTP status and
+title. If a browser test is truly needed, ask the person first and say it may play sound. When
+the person needs to look at it, give the exact URL and stop.
 
 **Fake the data, never the vocabulary.** Invent company names, amounts and dates.
 Never invent what the product calls things. If the codebase says "policy" do not
