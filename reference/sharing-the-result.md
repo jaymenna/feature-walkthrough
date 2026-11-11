@@ -1,6 +1,12 @@
 # Getting the walkthrough in front of people
 
-Do none of this unless the user asks. The default — one file, sent as an
+UNDTEC RULE (Jay, 2026-11-09): always publish the finished walkthrough on
+try.undtec.com at /var/www/mockups/<client>/<node channel name>/index.html and give
+the https URL in the reply. A local file alone is never the deliverable. See the
+global CLAUDE.md rule "FEATURE WALKTHROUGHS ALWAYS GO UP ON try.undtec.com". The
+rest of this page (relay key, assignees) stays optional.
+
+Outside undtec, do none of this unless the user asks. The default — one file, sent as an
 attachment — works, needs no infrastructure, and cannot break.
 
 ## Default: just send the file

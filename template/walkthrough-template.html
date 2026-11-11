@@ -422,6 +422,14 @@ body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
         <div class="ap-err">Tell us what needs to change.</div>
       </div>
 
+      <div class="ap-field" id="fDraftEmail">
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="apDraftEmail" style="margin-top:3px;width:16px;height:16px;flex:none">
+          <span id="apDraftEmailLabel">Draft an email to the client for approval?</span>
+        </label>
+        <div style="margin:4px 0 0 26px;font-size:12px;color:#868e96;font-weight:400">If checked, a draft in the Underwriters Technologies email template is saved in your outgoing mailbox. It is never sent.</div>
+      </div>
+
       <div class="ap-actions">
         <div class="grow"></div>
         <button class="btn-lg btn-cancel" id="apCancel">Cancel</button>
@@ -435,6 +443,11 @@ body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
         <h3 id="apDoneTitle">Thank you</h3>
         <p id="apDoneMsg"></p>
         <div class="payload" id="apPayload"></div>
+        <div id="apDraftBox" style="display:none;text-align:left;margin-top:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px">For your own Claude Code: draft the approval email</div>
+          <div class="payload" id="apDraftPrompt"></div>
+          <div class="ap-actions"><button class="btn-lg btn-cancel" id="apDraftCopy">Copy this prompt</button></div>
+        </div>
         <div class="ap-actions">
           <button class="btn-lg btn-cancel" id="apCopy">Copy</button>
           <button class="btn-lg btn-cancel" id="apDownload">Download</button>
@@ -472,6 +485,8 @@ const PAGE_PATH         = '';   // '/mockups/<customer>/<channel name>/index.htm
 const WALKTHROUGH_URL   = '';   // 'https://try.undtec.com/mockups/<customer>/<channel name>/'
 const NEXT_PROMPT       = '';   // 'Build <channel name> as approved' — the assignee pastes this into Claude Code
 const REVIEWER          = '';   // the node creator's name; pre-fills "Your name". That person decides.
+const CLIENT_EMAIL_SUMMARY = '';   // 2 to 3 plain sentences for the approval email: the problem and what we will build
+const CLIENT_CONTACT     = 'the client';   // who the approval email is for, e.g. 'Derrick Felix'. Shown in the checkbox question: Draft an email to <CLIENT_CONTACT> for approval?
 const ASSIGNEES         = {};   // { 'Jay Menna': 'UACR0M4RH', ... } names and Slack ids of the channel's members. No emails.
 
 /* The narration voice. Pick one:
@@ -1080,11 +1095,26 @@ const SUBMISSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(
 
 (function fillAssignees(){
   if(REVIEWER) $('apName').value = REVIEWER;
+  $('apDraftEmailLabel').textContent = `Draft an email to ${CLIENT_CONTACT} for approval?`;
   const sel = $('apAssign'); if(!sel) return;
   const names = Object.keys(ASSIGNEES);
   if(!names.length){ $('fAssign').style.display='none'; return; }
   names.forEach(n => { const o=document.createElement('option'); o.textContent=n; o.value=n; sel.appendChild(o); });
 })();
+
+// Jay, 2026-11-09: the channel never sees the draft-email request. It is an instruction for the
+// reviewer's own Claude Code, so it is shown here, on the reviewer's screen, in full.
+function buildDraftEmailPrompt(){
+  return [
+    `Create a Gmail DRAFT, and never send it, in my outgoing mailbox (jay@jaymenna.com).`,
+    `To: ${CLIENT_CONTACT}. Look up the address. If you are not sure of it, ask me.`,
+    `Subject: ${FEATURE}: please review the walkthrough`,
+    `Purpose: ask ${CLIENT_CONTACT} to approve this feature before we build it.`,
+    `What to say, in short plain English: ${CLIENT_EMAIL_SUMMARY || 'write 2 to 3 sentences from the node Why and What'}`,
+    `Include the walkthrough link ${WALKTHROUGH_URL} as the lime green button, and the questions we still need answered.`,
+    `Rules: use the Underwriters Technologies HTML email template v28 in /Users/jaymenna/DO AI WORK HERE /__Private_CORP_Stuff/email_sending_instructions.md. Call the system "Underwriters Technologies", never the customer's name. Save the draft only with node ~/.claude/skills/gmail/gmail_draft.mjs. After it is saved, show me the full text.`,
+  ].join('\n');
+}
 
 function buildPayloadText(v){
   return [
@@ -1093,6 +1123,7 @@ function buildPayloadText(v){
     ``,
     `Reviewer: ${v.name}${v.org ? ` — ${v.org}` : ''}`,
     v.assign ? `Assign the node to: ${v.assign}` : null,
+    v.draftEmail ? `Draft an email to ${CLIENT_CONTACT} for approval: yes (the prompt for your own Claude Code is on the next screen)` : null,
     WALKTHROUGH_URL ? `Feature walkthrough: ${WALKTHROUGH_URL}` : null,
     NEXT_PROMPT ? `Next step, paste into Claude Code: ${NEXT_PROMPT}` : null,
     `When: ${v.when}`,
@@ -1111,7 +1142,8 @@ $('apSend').addEventListener('click', async ()=>{
   if(!ok){ (!name ? $('apName') : $('apComment')).focus(); return; }
 
   const assign = $('fAssign').style.display==='none' ? '' : $('apAssign').value;
-  const payload = { name, org, comment, decision, assign,
+  const draftEmail = $('apDraftEmail').checked;
+  const payload = { name, org, comment, decision, assign, draftEmail,
     when: new Date().toLocaleString(undefined,{ dateStyle:'medium', timeStyle:'short' }) };
   const text = buildPayloadText(payload);
 
@@ -1144,11 +1176,21 @@ $('apSend').addEventListener('click', async ()=>{
     ? `Posted to Slack.${assign ? ` ${assign} has the walkthrough link and the prompt for the next step.` : ''}`
     : 'Copy this, download it, or use Email it — whichever suits you.';
   $('apPayload').textContent = text;
+  $('apDraftBox').style.display = draftEmail ? 'block' : 'none';
+  if(draftEmail) $('apDraftPrompt').textContent = buildDraftEmailPrompt();
   $('apHint').textContent = delivered ? '' : (tried
     ? 'Not posted to Slack: the relay did not answer. Nothing leaves this page until you choose one of the buttons above.'
     : 'Nothing leaves this page until you choose one of the buttons above.');
   $('apEmail').style.display = FEEDBACK_EMAIL ? '' : 'none';
   window.__lastReview = { payload, text };
+});
+
+$('apDraftCopy').addEventListener('click', ()=>{
+  if(navigator.clipboard){
+    navigator.clipboard.writeText($('apDraftPrompt').textContent).then(()=>{
+      $('apDraftCopy').textContent='Copied'; setTimeout(()=>$('apDraftCopy').textContent='Copy this prompt',1600);
+    }).catch(()=>{});
+  }
 });
 
 $('apCopy').addEventListener('click', ()=>{

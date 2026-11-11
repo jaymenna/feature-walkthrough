@@ -1,5 +1,11 @@
 # Reading the codebase
 
+**HARD RULE (Jay, 2026-11-11):** reading the theme is not enough. The screens in the
+walkthrough are captured from the real app running from its source code (real DOM,
+real CSS as written). Never hand-draw a screen from theme values. See the HARD RULE at
+the top of SKILL.md for the capture steps. This page is for the vocabulary and for
+knowing which screens and components to capture.
+
 The walkthrough has to look like it was taken from the customer's own application.
 That comes from reading their code, not from styling something that looks nice.
 

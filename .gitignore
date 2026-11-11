@@ -4,3 +4,4 @@ my_claude.md
 
 __pycache__/
 *.pyc
+.gstack/
